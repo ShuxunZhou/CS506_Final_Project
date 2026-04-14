@@ -1,3 +1,9 @@
 .DS_Store
 .idea
 .vscode
+
+# Large data files (reproducible via scripts)
+*.parquet
+problemstic/data/shapefiles/
+problemstic/models/
+problemstic/Archive.zip
