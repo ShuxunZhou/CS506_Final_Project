@@ -1,0 +1,7 @@
+.DS_Store
+
+# Large data files (reproducible via scripts)
+*.parquet
+data/shapefiles/
+models/
+Archive.zip
