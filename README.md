@@ -53,11 +53,11 @@ Income and Social Status API: https://www.bls.gov/developers/home.htm
 *See `notebooks/eda.ipynb` for full code.*
 
 ### The "Equity Gap" Visualized
-![Equity Gap Plot](images/eda_equity.png)
+![Equity Gap Plot](others/images/eda_equity.png)
 *Figure 1: Residents in the North End wait significantly longer for street light repairs than other neighborhoods.*
 
 ### The "Long Tail" Problem
-![Variance Plot](images/eda_variance.png)
+![Variance Plot](others/images/eda_variance.png)
 *Figure 2: Boxplots reveal massive variance. While median times are low, the "long tail" of neglected cases extends for months.*
 
 ### The Structural Break TODO
