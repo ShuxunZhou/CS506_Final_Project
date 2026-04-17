@@ -109,8 +109,10 @@ def main():
     ep_cols = [v[2] for v in SVI_VARS] + ["EP_MINRTY"]
     output = merged[["FIPS"] + ep_cols].copy()
 
-    # Save
-    out_path = "/Users/rayxu/CS506_Final_Project/problemstic/data/svi_2022_ma_tract.csv"
+    # Save to Step3. April_v1.1/data/ (one directory up from this script's location)
+    out_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data")
+    os.makedirs(out_dir, exist_ok=True)
+    out_path = os.path.join(out_dir, "svi_2022_ma_tract.csv")
     output.to_csv(out_path, index=False)
     print(f"\nSaved {len(output)} tracts to {out_path}")
     print(f"\nSample:\n{output.head()}")

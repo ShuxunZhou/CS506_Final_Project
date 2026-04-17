@@ -8,7 +8,7 @@ import urllib.request
 import zipfile
 import ssl
 
-DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
+DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "data")
 SHAPEFILE_DIR = os.path.join(DATA_DIR, "shapefiles")
 SVI_CSV_PATH = os.path.join(DATA_DIR, "svi_2022_ma_tract.csv")
 SHAPEFILE_ZIP = os.path.join(SHAPEFILE_DIR, "tl_2022_25_tract.zip")
