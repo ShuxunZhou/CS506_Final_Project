@@ -1,0 +1,37 @@
+Step3. April/
+  │
+  ├── .gitignore                          # 排除 *.parquet / shapefiles/ / models/ / .DS_Store
+  │
+  ├── scripts/                            ── ETL 与数据下载脚本（Python 源）
+  │   ├── etl_311.py                      # 拉取 Boston 311 CKAN API (2020-2026)，输出 parquet+csv
+  │   ├── download_data.py                # 下载 CDC SVI 2022 CSV + TIGER MA tract shapefile
+  │   ├── download_svi_tract.py           # （备选）从 Census ACS API 直接计算 EP_ 变量
+  │   └── data/                           ── 脚本产出的原始数据
+  │       ├── svi_2022_ma_tract.csv       # 1.2 MB  MA Census Tract 级 SVI 特征
+  │       └── shapefiles/                 # [gitignored] TIGER MA tract .shp 解压目录（当前空）
+  │
+  ├── data/                               ── ETL 后中间产物（大文件，gitignored）
+  │   ├── boston_311_2020_2026.csv        # 795 MB [gitignored] ETL 文本 checkpoint
+  │   └── boston_311_2020_2026.parquet    # 175 MB [gitignored] 主数据集，1.69M 条记录
+  │
+  ├── notebooks/                          ── 分析与建模（Jupyter）
+  │   ├── spatial_join.ipynb              #  12 KB  311 点 → Census Tract 空间连接 + SVI 合并
+  │   ├── equity_regression.ipynb         # 100 KB  Logit 聚类SE（右截断+VIF，Tutor #1 #2）
+  │   ├── overdue_classifier.ipynb        # 220 KB  LR/DT/RF 三模型 + PR-AUC（Tutor #1 #4）
+  │   ├── prd_dedup_routing.ipynb         #  92 KB  48h 去重 + LightGBM 路由（Tutor #3）
+  │   └── missing_coord_bias.ipynb        # 100 KB  缺经纬度 χ² 偏差诊断（Tutor #5）
+  │
+  ├── figures/                            ── notebook 产出的图（PNG）
+  │   ├── svi_distributions.png           # 136 KB  SVI 6 个 EP_ 特征直方图（spatial_join 输出）
+  │   ├── odds_ratios_clustered.png       #  44 KB  SVI 聚类 SE 下的 Odds Ratio 条形图
+  │   ├── confusion_matrix_baseline.png   #  40 KB  equity_regression 默认阈值混淆矩阵
+  │   ├── confusion_matrix_optimized.png  #  44 KB  overdue_classifier 优化阈值混淆矩阵
+  │   ├── pr_roc_curves.png               # 128 KB  PR + ROC 曲线（含 prevalence 基线）
+  │   ├── feature_importance.png          #  60 KB  Random Forest 特征重要性 Top15
+  │   ├── feature_importance_routing.png  #  60 KB  LightGBM Router 关键词 Top20
+  │   └── missing_coord_bias.png          #  96 KB  缺坐标按月/日/时分布
+  │
+  └── models/                             ── [gitignored] 训练产物（Joblib pkl）
+      ├── lgbm_router.pkl                 # 5.8 MB  LightGBM 部门路由分类器
+      ├── tfidf_router.pkl                # 248 KB  TF-IDF 向量化器（ngram 1-2，max_features=10K）
+      └── label_encoder.pkl               # 1.0 KB  12 个部门的 LabelEncoder
