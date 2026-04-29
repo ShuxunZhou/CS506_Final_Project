@@ -533,20 +533,36 @@ def export_missing_bias(df: pd.DataFrame | None) -> None:
         df_2024 = df[(df["open_dt"] >= "2024-01-01") & (df["open_dt"] < "2025-01-01")]
         if len(df_2024):
             missing_mask = df_2024[lat_col].isna() | df_2024[lon_col].isna()
-            payload["total_records_2024"] = int(len(df_2024))
-            payload["missing_count"] = int(missing_mask.sum())
-            payload["missing_rate"] = float(missing_mask.mean())
+            n_missing = int(missing_mask.sum())
+            if n_missing == 0:
+                # etl_311.py drops missing-coord rows + applies a Boston bbox
+                # filter, so the parquet by construction has no missing coords
+                # left to bin. Recomputing here would just emit zeros and
+                # blank out the (documented) by-hour / by-dow plots. Keep the
+                # fallback distribution and tag the source so the dashboard
+                # source-pill makes the limitation visible.
+                log(
+                    "missing_bias: parquet has 0 missing coords (filtered by ETL) — "
+                    "keeping documented fallback for hour/dow/categories",
+                    level="WARN",
+                )
+                payload["source"] = "fallback (etl-filtered parquet)"
+                payload["total_records_2024"] = int(len(df_2024))
+            else:
+                payload["total_records_2024"] = int(len(df_2024))
+                payload["missing_count"] = n_missing
+                payload["missing_rate"] = float(missing_mask.mean())
 
-            hours = df_2024["open_dt"].dt.hour
-            by_hour = (
-                missing_mask.groupby(hours).mean().reindex(range(24), fill_value=0).tolist()
-            )
-            payload["by_hour"] = [[h, float(v)] for h, v in enumerate(by_hour)]
+                hours = df_2024["open_dt"].dt.hour
+                by_hour = (
+                    missing_mask.groupby(hours).mean().reindex(range(24), fill_value=0).tolist()
+                )
+                payload["by_hour"] = [[h, float(v)] for h, v in enumerate(by_hour)]
 
-            dow_labels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-            dow = df_2024["open_dt"].dt.dayofweek
-            by_dow = missing_mask.groupby(dow).mean().reindex(range(7), fill_value=0).tolist()
-            payload["by_dow"] = [[dow_labels[i], float(v)] for i, v in enumerate(by_dow)]
+                dow_labels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+                dow = df_2024["open_dt"].dt.dayofweek
+                by_dow = missing_mask.groupby(dow).mean().reindex(range(7), fill_value=0).tolist()
+                payload["by_dow"] = [[dow_labels[i], float(v)] for i, v in enumerate(by_dow)]
 
     if "archetype" in df.columns and "is_overdue" in df.columns:
         arch_grp = df.groupby("archetype").agg(

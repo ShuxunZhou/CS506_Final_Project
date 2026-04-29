@@ -273,17 +273,20 @@ def export_router() -> None:
     tfidf = joblib.load(pkls["tfidf"])
     le = joblib.load(pkls["le"])
 
+    # Build the same training subset notebook-04 used so we can (a) refit tfidf
+    # if its idf_ vector got dropped on save, and (b) score held-out accuracy.
+    df_full = pd.read_parquet(PARQUET, columns=["case_title", "department"])
+    df_route = df_full.dropna(subset=["case_title", "department"]).copy()
+    dept_counts = df_route["department"].value_counts()
+    valid_depts = dept_counts[dept_counts >= 500].index
+    df_route = df_route[df_route["department"].isin(valid_depts)]
+
     # The April rewrite re-pickled tfidf without the fitted idf_ vector
     # (sklearn cross-version save artefact). Vocab is deterministic given the
     # parquet + notebook-04 config, so refit in-place — feature count still
     # aligns with lgbm.n_features_in_.
     if not hasattr(tfidf, "idf_"):
         log("router: tfidf missing idf_ — refitting from parquet", level="WARN")
-        df_full = pd.read_parquet(PARQUET, columns=["case_title", "department"])
-        df_route = df_full.dropna(subset=["case_title", "department"]).copy()
-        dept_counts = df_route["department"].value_counts()
-        valid_depts = dept_counts[dept_counts >= 500].index
-        df_route = df_route[df_route["department"].isin(valid_depts)]
         tfidf.fit(df_route["case_title"])
         n_feat = tfidf.transform([""]).shape[1]
         if n_feat != lgbm.n_features_in_:
@@ -294,6 +297,21 @@ def export_router() -> None:
             )
             return
     feat_names = tfidf.get_feature_names_out()
+
+    # Held-out accuracy on the same 80/20 split notebook-04 uses
+    # (random_state=42, stratify=y). Mirrors the value the dashboard expects.
+    from sklearn.metrics import accuracy_score
+    try:
+        X_all = tfidf.transform(df_route["case_title"])
+        y_all = le.transform(df_route["department"])
+        _, X_test, _, y_test = train_test_split(
+            X_all, y_all, test_size=0.2, random_state=42, stratify=y_all
+        )
+        test_accuracy = float(accuracy_score(y_test, lgbm.predict(X_test)))
+        log(f"router: test_accuracy={test_accuracy:.4f} on {len(y_test):,} held-out tickets")
+    except Exception as exc:  # noqa: BLE001
+        log(f"router: test_accuracy calc failed ({exc})", level="WARN")
+        test_accuracy = None
 
     samples = []
     for title in CURATED_TITLES:
@@ -319,7 +337,7 @@ def export_router() -> None:
     payload = {
         "source": "notebook",  # preserved by export_dashboard_data.py
         "n_departments": int(len(le.classes_)),
-        "test_accuracy": None,  # filled from classification if we had test set; left null
+        "test_accuracy": test_accuracy,
         "samples": samples,
     }
     write_json(OUT_DIR / "router_samples.json", payload)
@@ -395,9 +413,17 @@ def export_dedup(df: pd.DataFrame) -> None:
         log("dedup: 0 pairs at 50m/85%/48h — leaving fallback in place", level="WARN")
         return
 
-    # Top 10 example pairs ranked by text similarity × proximity
-    pairs["score"] = pairs["text_sim"] * (1 - pairs["distance_m"] / 50.0)
-    top = pairs.sort_values("score", ascending=False).head(10)
+    # Top 10 example pairs ranked by text similarity × proximity. Drop pairs
+    # with dist <= 5m before ranking — those are exact-coord re-submissions
+    # (same address, GPS-noise duplicates) that dominate the score but read
+    # as trivial in the dashboard. We want the story "near-by addresses
+    # caught as same incident", which lives in the 5–50m band.
+    GPS_NOISE_M = 5.0
+    spatial = pairs[pairs["distance_m"] > GPS_NOISE_M].copy()
+    if spatial.empty:
+        spatial = pairs.copy()  # fall back if all pairs are co-located
+    spatial["score"] = spatial["text_sim"] * (1 - spatial["distance_m"] / 50.0)
+    top = spatial.sort_values("score", ascending=False).head(10)
 
     examples = []
     for _, p in top.iterrows():
