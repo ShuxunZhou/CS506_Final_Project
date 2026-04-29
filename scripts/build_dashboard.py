@@ -16,7 +16,9 @@ from datetime import datetime
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-STEP_DIR = SCRIPT_DIR.parent
+REPO_ROOT = SCRIPT_DIR.parent
+# The dashboard still lives under Step3. April_v1.1/ after the April rewrite.
+STEP_DIR = REPO_ROOT / "Step3. April_v1.1"
 DASH_DIR = STEP_DIR / "dashboard"
 TEMPLATE = DASH_DIR / "template.html.j2"
 INDEX = DASH_DIR / "index.html"

@@ -46,8 +46,11 @@ from sklearn.tree import DecisionTreeClassifier
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 STEP_DIR = SCRIPT_DIR.parent
+REPO_ROOT = STEP_DIR.parent
 DATA_DIR = STEP_DIR / "data"
-MODELS_DIR = STEP_DIR / "models"
+# Notebooks were moved to repo-root in the April rewrite; pkl artifacts now
+# live at <repo>/models/ instead of Step3/models/.
+MODELS_DIR = REPO_ROOT / "models"
 OUT_DIR = STEP_DIR / "dashboard" / "data"
 PARQUET = DATA_DIR / "boston_311_with_svi.parquet"
 
@@ -269,6 +272,27 @@ def export_router() -> None:
     lgbm = joblib.load(pkls["lgbm"])
     tfidf = joblib.load(pkls["tfidf"])
     le = joblib.load(pkls["le"])
+
+    # The April rewrite re-pickled tfidf without the fitted idf_ vector
+    # (sklearn cross-version save artefact). Vocab is deterministic given the
+    # parquet + notebook-04 config, so refit in-place — feature count still
+    # aligns with lgbm.n_features_in_.
+    if not hasattr(tfidf, "idf_"):
+        log("router: tfidf missing idf_ — refitting from parquet", level="WARN")
+        df_full = pd.read_parquet(PARQUET, columns=["case_title", "department"])
+        df_route = df_full.dropna(subset=["case_title", "department"]).copy()
+        dept_counts = df_route["department"].value_counts()
+        valid_depts = dept_counts[dept_counts >= 500].index
+        df_route = df_route[df_route["department"].isin(valid_depts)]
+        tfidf.fit(df_route["case_title"])
+        n_feat = tfidf.transform([""]).shape[1]
+        if n_feat != lgbm.n_features_in_:
+            log(
+                f"router: refit produced {n_feat} features, expected "
+                f"{lgbm.n_features_in_} — skipping router export",
+                level="WARN",
+            )
+            return
     feat_names = tfidf.get_feature_names_out()
 
     samples = []

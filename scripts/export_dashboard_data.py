@@ -22,9 +22,13 @@ import numpy as np
 import pandas as pd
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-STEP_DIR = SCRIPT_DIR.parent
+REPO_ROOT = SCRIPT_DIR.parent
+# After the April rewrite, notebooks/scripts/models live at repo root, but the
+# 311×SVI parquet, shapefile, and dashboard still sit under Step3. April_v1.1/.
+# STEP_DIR is kept for log paths that humans still recognise as "the Step3 dir".
+STEP_DIR = REPO_ROOT / "Step3. April_v1.1"
 DATA_DIR = STEP_DIR / "data"
-MODELS_DIR = STEP_DIR / "models"
+MODELS_DIR = REPO_ROOT / "models"
 SHAPEFILE = DATA_DIR / "shapefiles" / "tl_2022_25_tract.shp"
 SVI_CSV = DATA_DIR / "svi_2022_ma_tract.csv"
 OUT_DIR = STEP_DIR / "dashboard" / "data"
