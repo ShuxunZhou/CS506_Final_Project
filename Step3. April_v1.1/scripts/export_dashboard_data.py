@@ -39,7 +39,7 @@ PARQUET = DATA_DIR / "boston_311_with_svi.parquet"
 # Right-censor cutoff from April.md: records opened after this date may not yet
 # have hit the 30-day overdue threshold, so they're excluded from regression +
 # tract aggregates.
-CUTOFF_DATE = pd.Timestamp("2026-03-09")
+CUTOFF_DATE = pd.Timestamp("2026-03-09", tz="UTC")
 
 SVI_FEATURES = [
     "EP_POV150", "EP_UNEMP", "EP_NOHSDP",
