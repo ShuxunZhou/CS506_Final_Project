@@ -63,7 +63,30 @@ Income and Social Status API: https://www.bls.gov/developers/home.htm
 ### The Structural Break TODO
 ![Structural Break]
 
-## 5. Project Roadmap & Timeline
+## 5. Dashboard
+
+Single-page HTML dashboard (equity regression, overdue classifier, tract choropleth, PRD router/dedup demo, missing-coord bias).
+
+**Launch** — from repo root:
+
+```bash
+cd "Step3. April_v1.1/dashboard"
+python -m http.server 8000
+# → open http://localhost:8000/
+```
+
+Chrome blocks `fetch()` on `file://`, so a local server is required; double-clicking `index.html` only works in Firefox. Plotly loads from CDN — online required.
+
+**Data pipeline** — the HTML fetches pre-built JSON under `dashboard/data/`:
+
+1. `scripts/etl_311.py` → `data/boston_311_*.parquet`
+2. `notebooks/spatial_join.ipynb` → `data/boston_311_with_svi.parquet` (311 × SVI tract join)
+3. `scripts/export_dashboard_data.py` → aggregates into `dashboard/data/*.json` + `tracts.geojson` (~3 MB total); falls back to documented April.md values if any upstream artifact is missing
+4. `scripts/build_dashboard.py` → renders `dashboard/index.html` from the Jinja template
+
+Curated PRD demos (`router_samples.json`, `dedup_samples.json`) are authored by `notebooks/prd_dedup_routing.ipynb` when present; otherwise the export script writes fallback samples. See `Step3. April_v1.1/dashboard/README.md` for full details.
+
+## 6. Project Roadmap & Timeline
 We have structured the project to fit the 8-week semester timeline, with built-in buffers for contingencies.
 
 * **Week 1-2: Data Engineering (Current Phase)**

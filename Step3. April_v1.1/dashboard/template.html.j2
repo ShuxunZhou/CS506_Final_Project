@@ -1,0 +1,680 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Boston 311 Equity & Ops — CS506</title>
+<script src="https://cdn.plot.ly/plotly-2.35.0.min.js" charset="utf-8"></script>
+<style>
+  :root {
+    --bg:#fafafa; --fg:#1a1a1a; --muted:#6b7280; --card:#fff;
+    --accent:#b91c1c; --accent-soft:#fee2e2; --border:#e5e7eb;
+    --ok:#065f46; --ok-soft:#d1fae5; --warn:#92400e; --warn-soft:#fef3c7;
+    --chip-bg:#1f2937; --chip-fg:#f9fafb;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;
+       background:var(--bg);color:var(--fg);line-height:1.55;font-size:15px}
+  nav.top{position:sticky;top:0;z-index:100;background:#fff;border-bottom:1px solid var(--border);
+          padding:10px 24px;display:flex;gap:24px;align-items:center;
+          box-shadow:0 1px 3px rgba(0,0,0,0.04)}
+  nav.top strong{font-size:15px;color:var(--accent)}
+  nav.top a{color:var(--fg);text-decoration:none;font-size:14px;padding:4px 8px;border-radius:4px}
+  nav.top a:hover{background:var(--accent-soft);color:var(--accent)}
+  .wrap{max-width:1180px;margin:0 auto;padding:32px 24px}
+  section{margin-bottom:56px;scroll-margin-top:64px}
+  section > h2{font-size:24px;margin:0 0 4px;display:flex;align-items:baseline;gap:12px}
+  section > h2 .num{color:var(--accent);font-variant-numeric:tabular-nums;font-size:14px;font-weight:500}
+  section > p.lede{color:var(--muted);margin:0 0 20px;max-width:820px}
+  .hero{background:linear-gradient(135deg,#1f2937,#0f172a);color:#fff;
+        padding:48px 32px;border-radius:12px;margin-bottom:40px}
+  .hero h1{margin:0 0 8px;font-size:32px}
+  .hero .sub{color:#9ca3af;margin-bottom:24px}
+  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px}
+  .kpi{background:rgba(255,255,255,0.06);padding:16px;border-radius:8px;border:1px solid rgba(255,255,255,0.1)}
+  .kpi .v{font-size:26px;font-weight:600;font-variant-numeric:tabular-nums}
+  .kpi .l{font-size:12px;color:#9ca3af;text-transform:uppercase;letter-spacing:0.05em;margin-top:4px}
+  .callout{background:var(--warn-soft);border-left:4px solid var(--warn);
+           padding:12px 16px;border-radius:4px;margin:16px 0;font-size:14px}
+  .callout.ok{background:var(--ok-soft);border-left-color:var(--ok)}
+  .callout.info{background:#dbeafe;border-left-color:#1d4ed8}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:8px;
+        padding:20px;margin-bottom:16px}
+  .card h3{margin:0 0 12px;font-size:17px}
+  .card .meta{color:var(--muted);font-size:13px;margin-bottom:12px}
+  .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:800px){.grid-2{grid-template-columns:1fr}}
+  .chart{width:100%;min-height:380px}
+  .chart.tall{min-height:520px}
+  select,button{font:inherit;padding:6px 10px;border:1px solid var(--border);
+                border-radius:4px;background:#fff;cursor:pointer}
+  select:hover,button:hover{border-color:#9ca3af}
+  .chip{display:inline-block;padding:3px 10px;background:var(--chip-bg);color:var(--chip-fg);
+        border-radius:12px;font-size:12px;font-weight:500;letter-spacing:0.02em}
+  .chip.dept-PWDx{background:#1e40af}
+  .chip.dept-PROP{background:#7c3aed}
+  .chip.dept-PARK{background:#047857}
+  .chip.dept-BTDT{background:#b45309}
+  .chip.dept-ISD{background:#be123c}
+  .chip.dept-BWSC{background:#0369a1}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  table th,table td{text-align:left;padding:8px 12px;border-bottom:1px solid var(--border);vertical-align:top}
+  table th{background:#f3f4f6;font-weight:600;color:var(--muted);text-transform:uppercase;
+           font-size:11px;letter-spacing:0.05em}
+  table tbody tr:hover{background:#f9fafb}
+  .source-tag{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:0.05em}
+  .source-tag.fallback{color:var(--warn)}
+  .source-tag.computed{color:var(--ok)}
+  footer{text-align:center;color:var(--muted);font-size:12px;padding:32px;border-top:1px solid var(--border)}
+  .loading{display:flex;align-items:center;justify-content:center;min-height:380px;color:var(--muted)}
+  .banner{background:#fef3c7;border:1px solid #fcd34d;padding:10px 16px;border-radius:6px;
+          font-size:13px;margin-bottom:20px;color:#78350f}
+  .banner strong{color:#451a03}
+</style>
+</head>
+<body>
+
+<nav class="top">
+  <strong>Boston 311 · CS506</strong>
+  <a href="#equity">Equity</a>
+  <a href="#map">Tract Map</a>
+  <a href="#prd">PRD Demo</a>
+  <a href="#bias">Bias & Archetype</a>
+  <span style="flex:1"></span>
+  <span style="color:var(--muted);font-size:12px">Built {{ build_date }}</span>
+</nav>
+
+<div class="wrap">
+
+  <div class="hero">
+    <h1>Boston 311 Service Latency &amp; Equity Analysis</h1>
+    <div class="sub">CS506 Final · 1.69M records (2020–2026) · 327 Census tracts · CDC SVI 2022</div>
+    <div class="kpis">
+      <div class="kpi"><div class="v">1.69M</div><div class="l">311 records</div></div>
+      <div class="kpi"><div class="v">327</div><div class="l">Census tracts</div></div>
+      <div class="kpi"><div class="v">75.0%</div><div class="l">RF recall @ τ=0.43</div></div>
+      <div class="kpi"><div class="v">0.72</div><div class="l">RF AUC</div></div>
+      <div class="kpi"><div class="v">27.3K</div><div class="l">Dedup pairs Q1'24</div></div>
+      <div class="kpi"><div class="v">$16.4M</div><div class="l">Est. annual savings</div></div>
+    </div>
+  </div>
+
+  <div class="callout info">
+    <strong>Core finding:</strong> Service type (K-Means archetype) explains latency far better than
+    neighborhood demographics. After controlling for archetype + source channel, only
+    <code>EP_MINRTY</code> remains statistically significant (OR = 1.0028, p = 0.018) — a real
+    but tiny effect. Policy lever: fix chronically backlogged service types, not treat
+    neighborhoods differently.
+  </div>
+
+  <!-- ============================================================ -->
+  <section id="equity">
+    <h2><span class="num">01</span>Equity Regression &amp; Overdue Classifier</h2>
+    <p class="lede">Decomposed logit on six SVI components (clustered SE by tract, right-censored
+      cutoff 2026-03-09, VIF ≤ 5). Companion overdue classifier optimizes recall on the
+      &gt;30-day tail.</p>
+
+    <div class="grid-2">
+      <div class="card">
+        <h3>Odds Ratios with 95% CI</h3>
+        <div class="meta">Logit on is_overdue; clustered SE by GEOID · <span id="reg-source" class="source-tag"></span></div>
+        <div id="chart-or" class="chart"></div>
+      </div>
+      <div class="card">
+        <h3>VIF Diagnostic</h3>
+        <div class="meta">All six features retained; max VIF ≤ 5 → collinearity acceptable</div>
+        <div id="chart-vif" class="chart"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>PR &amp; ROC Curves — Three Models</h3>
+      <div class="meta">Prevalence baseline ≈ 0.18 · <span id="clf-source" class="source-tag"></span></div>
+      <div id="chart-prroc" class="chart tall"></div>
+    </div>
+
+    <div class="grid-2">
+      <div class="card">
+        <h3>Confusion Matrix</h3>
+        <div class="meta">
+          <select id="cm-select">
+            <option value="base">Baseline threshold (0.5)</option>
+            <option value="opt" selected>Optimized threshold (0.4304)</option>
+          </select>
+        </div>
+        <div id="chart-cm" class="chart"></div>
+      </div>
+      <div class="card">
+        <h3>Random Forest Feature Importance (Top 15)</h3>
+        <div class="meta">Operational features (archetype, source) dominate demographics</div>
+        <div id="chart-featimp" class="chart"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================ -->
+  <section id="map">
+    <h2><span class="num">02</span>Tract-Level Choropleth</h2>
+    <p class="lede">327 MA Census tracts, colored by overdue rate, a selected SVI component, or the
+      dominant K-Means archetype per tract.</p>
+
+    <div class="card">
+      <div class="meta" style="display:flex;gap:12px;align-items:center;margin-bottom:16px">
+        <label for="map-layer"><strong>Layer:</strong></label>
+        <select id="map-layer">
+          <option value="overdue_rate">Overdue rate (needs 311 pipeline)</option>
+          <option value="ep_minrty" selected>EP_MINRTY (Minority %)</option>
+          <option value="ep_pov150">EP_POV150 (Poverty)</option>
+          <option value="ep_noveh">EP_NOVEH (No Vehicle)</option>
+          <option value="archetype">K-Means archetype (needs 311 pipeline)</option>
+        </select>
+        <span style="flex:1"></span>
+        <span id="map-source" class="source-tag"></span>
+      </div>
+      <div id="map-layer-status"></div>
+      <div id="chart-map" class="chart tall" style="min-height:600px"></div>
+    </div>
+  </section>
+
+  <!-- ============================================================ -->
+  <section id="prd">
+    <h2><span class="num">03</span>PRD — Dedup &amp; NLP Router Demo</h2>
+    <p class="lede">Stretch goal: spatio-temporal deduplication + LightGBM department routing.
+      Samples below are pre-computed; live inference requires loading the pickled models.</p>
+
+    <div class="banner">
+      <strong>Demo note:</strong> the dropdown shows 20 curated example tickets. A production
+      deployment would hit the saved <code>lgbm_router.pkl</code> + <code>tfidf_router.pkl</code>
+      in a backend process.
+    </div>
+
+    <div class="grid-2">
+      <div class="card">
+        <h3>Router — predicted department</h3>
+        <div class="meta">LightGBM on TF-IDF of case_title · 12 depts · <span id="router-acc" class="source-tag"></span></div>
+        <label for="router-select"><strong>Try a ticket title:</strong></label>
+        <select id="router-select" style="width:100%;margin:8px 0"></select>
+        <div style="margin:16px 0">
+          <span>Predicted:</span>
+          <span id="router-chip" class="chip">—</span>
+          <span id="router-proba" style="color:var(--muted);margin-left:8px"></span>
+        </div>
+        <div id="chart-router" class="chart" style="min-height:300px"></div>
+      </div>
+
+      <div class="card">
+        <h3>Dedup — Q1 2024 snapshot</h3>
+        <div class="kpis" style="grid-template-columns:1fr 1fr;margin-bottom:16px">
+          <div class="kpi" style="background:#f3f4f6;color:var(--fg);border-color:var(--border)">
+            <div class="v" id="dedup-pairs">—</div>
+            <div class="l" style="color:var(--muted)">Duplicate pairs</div>
+          </div>
+          <div class="kpi" style="background:#f3f4f6;color:var(--fg);border-color:var(--border)">
+            <div class="v" id="dedup-savings">—</div>
+            <div class="l" style="color:var(--muted)">Est. annual savings</div>
+          </div>
+        </div>
+        <div class="meta">48-hour time window · &lt;50m haversine · TF-IDF ≥ 0.85 cosine</div>
+        <table>
+          <thead><tr><th>Type</th><th>Titles</th><th>Δ dist</th><th>Δ time</th></tr></thead>
+          <tbody id="dedup-rows"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================ -->
+  <section id="bias">
+    <h2><span class="num">04</span>Missing-Coordinate Bias &amp; Archetype Profile</h2>
+    <p class="lede">Tutor-flagged risk: are tickets with missing lat/lon randomly distributed? The
+      χ² test says no — program/policy feedback submissions (phone/email) skew the drop.</p>
+
+    <div class="grid-2">
+      <div class="card">
+        <h3>Missing-coord rate by hour / weekday</h3>
+        <div class="meta">2024 sample · <span id="bias-source" class="source-tag"></span></div>
+        <div id="chart-bias-hour" class="chart"></div>
+        <div id="chart-bias-dow" class="chart" style="min-height:220px"></div>
+      </div>
+      <div class="card">
+        <h3>K-Means archetypes — volume × overdue rate</h3>
+        <div class="meta">Chronic Backlog is a small-volume but high-severity cluster</div>
+        <div id="chart-archetype" class="chart tall"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Worst missing-coord categories</h3>
+      <table>
+        <thead><tr><th>Category</th><th>Missing rate</th><th>n</th></tr></thead>
+        <tbody id="bias-rows"></tbody>
+      </table>
+    </div>
+  </section>
+
+</div>
+
+<footer>
+  Boston 311 Service Latency &amp; Equity Analysis · CS506 Final Project ·
+  Data: Analyze Boston CKAN · CDC/ATSDR SVI 2022 · TIGER 2022 tracts
+</footer>
+
+<script>
+// -----------------------------------------------------------------
+// Data loader + chart init
+// -----------------------------------------------------------------
+const PLOTLY_CFG = {displaylogo:false, responsive:true, modeBarButtonsToRemove:["lasso2d","select2d"]};
+const ACCENT = "#b91c1c";
+
+async function loadJSON(name){
+  try {
+    const r = await fetch("./data/" + name);
+    if (!r.ok) throw new Error(r.status);
+    return await r.json();
+  } catch (e) {
+    console.warn("Failed to load", name, e);
+    return null;
+  }
+}
+
+function setSource(el, source){
+  const tag = document.getElementById(el);
+  if (!tag) return;
+  if (source === "computed") { tag.textContent = "Live data"; tag.classList.add("computed"); }
+  else if (source === "cached") { tag.textContent = "Cached from notebook"; tag.classList.add("computed"); }
+  else if (source === "svi_only") { tag.textContent = "SVI only — no 311 pipeline run"; tag.classList.add("fallback"); }
+  else { tag.textContent = "Fallback values"; tag.classList.add("fallback"); }
+}
+
+function fmt(n){
+  if (n == null || isNaN(n)) return "—";
+  if (Math.abs(n) >= 1e6) return (n/1e6).toFixed(1)+"M";
+  if (Math.abs(n) >= 1e3) return (n/1e3).toFixed(1)+"K";
+  if (Math.abs(n) < 1) return n.toFixed(3);
+  return n.toLocaleString();
+}
+
+// -----------------------------------------------------------------
+// (a) Regression: odds ratios
+// -----------------------------------------------------------------
+function renderOdds(reg){
+  if (!reg) return;
+  setSource("reg-source", reg.source);
+  const rows = reg.logit;
+  const ys = rows.map(r => r.var);
+  const xs = rows.map(r => r.or);
+  const errLow = rows.map(r => r.or - r.ci_low);
+  const errHigh = rows.map(r => r.ci_high - r.or);
+  const colors = rows.map(r => r.sig ? ACCENT : "#94a3b8");
+  const trace = {
+    x: xs, y: ys, type:"bar", orientation:"h",
+    marker:{color:colors},
+    error_x:{type:"data", symmetric:false, array: errHigh, arrayminus: errLow, color:"#374151"},
+    hovertemplate:"%{y}: OR = %{x:.4f}<br>p = %{customdata:.4f}<extra></extra>",
+    customdata: rows.map(r => r.p),
+  };
+  const sig = rows.find(r => r.sig);
+  const annots = sig ? [{
+    x: sig.or, y: sig.var, xref:"x", yref:"y",
+    text: `significant (p = ${sig.p.toFixed(3)})`,
+    showarrow:true, arrowhead:2, ax:40, ay:0,
+    bgcolor:"#fef2f2", bordercolor:ACCENT, font:{size:11,color:ACCENT},
+  }] : [];
+  Plotly.newPlot("chart-or", [trace], {
+    margin:{l:110,r:20,t:20,b:40}, height:380,
+    xaxis:{title:"Odds Ratio", zeroline:false},
+    yaxis:{autorange:"reversed"},
+    shapes:[{type:"line", x0:1, x1:1, y0:-0.5, yref:"y", y1:rows.length-0.5, line:{dash:"dash",color:"#9ca3af",width:1}}],
+    annotations: annots,
+  }, PLOTLY_CFG);
+}
+
+function renderVIF(reg){
+  if (!reg || !reg.vif) return;
+  const rows = reg.vif.slice().sort((a,b) => b.vif - a.vif);
+  Plotly.newPlot("chart-vif", [{
+    x: rows.map(r => r.vif),
+    y: rows.map(r => r.var),
+    type:"bar", orientation:"h",
+    marker:{color: rows.map(r => r.vif > 5 ? ACCENT : "#2563eb")},
+    hovertemplate:"%{y}: VIF = %{x:.2f}<extra></extra>",
+  }], {
+    margin:{l:110,r:20,t:20,b:40}, height:380,
+    xaxis:{title:"VIF", range:[0, Math.max(6, Math.max(...rows.map(r=>r.vif))+1)]},
+    yaxis:{autorange:"reversed"},
+    shapes:[{type:"line", x0:5, x1:5, yref:"paper", y0:0, y1:1, line:{dash:"dash",color:ACCENT,width:1}}],
+  }, PLOTLY_CFG);
+}
+
+// -----------------------------------------------------------------
+// (a) Classifier: PR + ROC, CM, feature importance
+// -----------------------------------------------------------------
+function renderPRROC(clf){
+  if (!clf) return;
+  setSource("clf-source", clf.source);
+  const prTrace = {
+    x: clf.pr_curve.map(p => p[0]), y: clf.pr_curve.map(p => p[1]),
+    mode:"lines", name:`PR (AP = ${clf.metrics.pr_auc.toFixed(3)})`,
+    xaxis:"x", yaxis:"y", line:{color:ACCENT,width:2},
+  };
+  const rocTrace = {
+    x: clf.roc_curve.map(p => p[0]), y: clf.roc_curve.map(p => p[1]),
+    mode:"lines", name:`ROC (AUC = ${clf.metrics.auc.toFixed(3)})`,
+    xaxis:"x2", yaxis:"y2", line:{color:"#1d4ed8",width:2},
+  };
+  const diag = {
+    x:[0,1], y:[0,1], mode:"lines", name:"chance",
+    xaxis:"x2", yaxis:"y2", line:{color:"#9ca3af",dash:"dash",width:1}, showlegend:false,
+  };
+  const baseline = {
+    x:[0,1], y:[clf.prevalence, clf.prevalence], mode:"lines", name:"prevalence",
+    xaxis:"x", yaxis:"y", line:{color:"#9ca3af",dash:"dash",width:1}, showlegend:false,
+  };
+  Plotly.newPlot("chart-prroc", [prTrace, baseline, rocTrace, diag], {
+    grid:{rows:1, columns:2, pattern:"independent"},
+    xaxis:{title:"Recall", domain:[0,0.48], range:[0,1]},
+    yaxis:{title:"Precision", range:[0,1]},
+    xaxis2:{title:"FPR", domain:[0.52,1], range:[0,1]},
+    yaxis2:{title:"TPR", range:[0,1], anchor:"x2"},
+    margin:{l:60,r:20,t:30,b:50},
+    annotations:[
+      {text:"Precision-Recall", x:0.24, y:1.03, xref:"paper", yref:"paper", showarrow:false, font:{size:13,color:"#374151"}},
+      {text:"ROC",              x:0.76, y:1.03, xref:"paper", yref:"paper", showarrow:false, font:{size:13,color:"#374151"}},
+    ],
+    legend:{orientation:"h", y:-0.15},
+  }, PLOTLY_CFG);
+}
+
+function renderCM(clf){
+  if (!clf) return;
+  const sel = document.getElementById("cm-select");
+  const draw = () => {
+    const key = sel.value === "base" ? "cm_base" : "cm_opt";
+    const m = clf[key];
+    const text = [["TN: "+fmt(m[0][0]), "FP: "+fmt(m[0][1])], ["FN: "+fmt(m[1][0]), "TP: "+fmt(m[1][1])]];
+    const tn=m[0][0], fp=m[0][1], fn=m[1][0], tp=m[1][1];
+    const rec = tp/(tp+fn), prec = tp/(tp+fp);
+    Plotly.newPlot("chart-cm", [{
+      z: m, type:"heatmap", x:["Pred: not overdue","Pred: overdue"], y:["Actual: overdue","Actual: not overdue"],
+      colorscale:"YlOrRd", showscale:false,
+      text: text, texttemplate:"%{text}", textfont:{size:14},
+    }], {
+      margin:{l:140,r:20,t:40,b:60}, height:360,
+      title:{text:`Recall = ${rec.toFixed(3)} · Precision = ${prec.toFixed(3)}`, font:{size:13}},
+      yaxis:{autorange:"reversed"},
+    }, PLOTLY_CFG);
+  };
+  sel.addEventListener("change", draw);
+  draw();
+}
+
+function renderFeatImp(clf){
+  if (!clf || !clf.feat_imp) return;
+  const rows = clf.feat_imp.slice(0,15).sort((a,b)=>a.imp-b.imp);
+  Plotly.newPlot("chart-featimp", [{
+    x: rows.map(r=>r.imp), y: rows.map(r=>r.name),
+    type:"bar", orientation:"h",
+    marker:{color: rows.map(r => /^Arch_|^Src_/.test(r.name) ? "#1f2937" : ACCENT)},
+    hovertemplate:"%{y}: %{x:.3f}<extra></extra>",
+  }], {
+    margin:{l:200,r:20,t:20,b:40}, height:380,
+    xaxis:{title:"Importance"},
+  }, PLOTLY_CFG);
+}
+
+// -----------------------------------------------------------------
+// (b) Choropleth
+// -----------------------------------------------------------------
+const ARCHETYPE_COLORS = ["#10b981", "#3b82f6", "#f59e0b", "#ef4444"];
+const ARCHETYPE_LABELS = ["Fast Resolution", "Routine", "Slow Queue", "Chronic Backlog"];
+// Discrete 4-band colorscale mapped onto zmin=0, zmax=3 so each integer archetype
+// id lands in its own color band (0→green, 1→blue, 2→amber, 3→red).
+const ARCH_COLORSCALE = [
+  [0.00, ARCHETYPE_COLORS[0]], [0.25, ARCHETYPE_COLORS[0]],
+  [0.25, ARCHETYPE_COLORS[1]], [0.50, ARCHETYPE_COLORS[1]],
+  [0.50, ARCHETYPE_COLORS[2]], [0.75, ARCHETYPE_COLORS[2]],
+  [0.75, ARCHETYPE_COLORS[3]], [1.00, ARCHETYPE_COLORS[3]],
+];
+
+async function renderMap(){
+  const [tracts, metrics] = await Promise.all([
+    loadJSON("tracts.geojson"),
+    loadJSON("tract_metrics.json"),
+  ]);
+  if (!tracts || !metrics) return;
+  setSource("map-source", metrics.source);
+
+  const tractData = metrics.tracts || {};
+  const hasGeo = tracts.features && tracts.features.length > 0;
+  if (!hasGeo) {
+    document.getElementById("chart-map").innerHTML =
+      '<div class="loading">Tract shapefile not available — run <code>python scripts/download_data.py</code> to enable the map.</div>';
+    return;
+  }
+
+  const geoids = tracts.features.map(f => f.properties.GEOID);
+  const sel = document.getElementById("map-layer");
+
+  const draw = () => {
+    const layer = sel.value;
+    const values = geoids.map(g => {
+      const t = tractData[g];
+      if (!t) return null;
+      if (layer === "archetype") return t.archetype != null ? t.archetype : null;
+      return t[layer] != null ? t[layer] : null;
+    });
+    const text = geoids.map(g => {
+      const t = tractData[g];
+      if (!t) return `GEOID ${g}<br>(no data)`;
+      const parts = [`GEOID ${g}`];
+      if (t.n != null) parts.push(`n = ${fmt(t.n)}`);
+      if (t.overdue_rate != null) parts.push(`overdue = ${(t.overdue_rate*100).toFixed(1)}%`);
+      if (layer.startsWith("ep_") && t[layer] != null) parts.push(`${layer} = ${t[layer].toFixed(1)}`);
+      if (t.archetype_name) parts.push(t.archetype_name);
+      return parts.join("<br>");
+    });
+
+    const isCat = layer === "archetype";
+    const hasData = values.some(v => v !== null && v !== undefined);
+    const status = document.getElementById("map-layer-status");
+
+    const layout = {
+      mapbox:{style:"white-bg", center:{lat:42.34, lon:-71.08}, zoom:10.2,
+              uirevision:"map"},
+      margin:{l:0,r:0,t:0,b:0}, height:600,
+    };
+    // Keep polygon styling identical across with-data / no-data branches so
+    // switching layers feels like just a recolor, not a different map.
+    const marker = {opacity:0.75, line:{width:0.5, color:"#ffffff"}};
+
+    if (!hasData) {
+      status.innerHTML =
+        '<div class="callout">This layer requires the full 311 pipeline ' +
+        '(<code>boston_311_with_svi.parquet</code>). The dashboard currently ships with SVI-only data — ' +
+        'try <strong>EP_MINRTY</strong>, <strong>EP_POV150</strong>, or <strong>EP_NOVEH</strong> to see live tract values.</div>';
+      Plotly.newPlot("chart-map", [{
+        type:"choroplethmapbox", geojson: tracts, locations: geoids,
+        z: geoids.map(() => 0),
+        featureidkey:"properties.GEOID",
+        colorscale:[[0,"#e5e7eb"],[1,"#e5e7eb"]],
+        text: text, hovertemplate:"%{text}<extra></extra>",
+        marker: marker,
+        // Keep colorbar visible so the map plot area matches the colored
+        // layers — otherwise Plotly reclaims the right margin and the map
+        // widens visibly when you switch layers.
+        colorbar:{title:"no data", tickvals:[0], ticktext:["—"], thickness:12},
+      }], layout, PLOTLY_CFG);
+      return;
+    }
+
+    status.innerHTML = "";
+    const trace = {
+      type:"choroplethmapbox",
+      geojson: tracts,
+      locations: geoids,
+      z: values,
+      featureidkey:"properties.GEOID",
+      colorscale: isCat ? ARCH_COLORSCALE : "Viridis",
+      zmin: isCat ? 0 : undefined,
+      zmax: isCat ? 3 : undefined,
+      text: text, hovertemplate:"%{text}<extra></extra>",
+      marker: marker,
+      colorbar: isCat
+        ? {title:"Archetype", tickvals:[0,1,2,3], ticktext:ARCHETYPE_LABELS, thickness:12}
+        : {title: layer, thickness:12},
+    };
+    Plotly.newPlot("chart-map", [trace], layout, PLOTLY_CFG);
+  };
+  sel.addEventListener("change", draw);
+  draw();
+}
+
+// -----------------------------------------------------------------
+// (c) PRD Router + Dedup
+// -----------------------------------------------------------------
+function renderRouter(r){
+  if (!r) return;
+  const acc = document.getElementById("router-acc");
+  acc.textContent = `Test acc ${(r.test_accuracy*100).toFixed(0)}% · ${r.source}`;
+  acc.classList.add(r.source === "computed" || r.source === "notebook" ? "computed" : "fallback");
+
+  const sel = document.getElementById("router-select");
+  r.samples.forEach((s, i) => {
+    const o = document.createElement("option");
+    o.value = i; o.textContent = s.title;
+    sel.appendChild(o);
+  });
+
+  const chip = document.getElementById("router-chip");
+  const proba = document.getElementById("router-proba");
+
+  const draw = () => {
+    const s = r.samples[+sel.value];
+    chip.textContent = s.predicted_dept;
+    chip.className = "chip dept-" + s.predicted_dept;
+    proba.textContent = `confidence ${(s.proba*100).toFixed(0)}%`;
+    const kws = s.top_keywords || [];
+    Plotly.newPlot("chart-router", [{
+      x: kws.map(k=>k[1]).reverse(),
+      y: kws.map(k=>k[0]).reverse(),
+      type:"bar", orientation:"h",
+      marker:{color:"#0f766e"},
+      hovertemplate:"%{y}: %{x:.3f}<extra></extra>",
+    }], {
+      margin:{l:110,r:20,t:20,b:40}, height:280,
+      xaxis:{title:"TF-IDF weight"},
+    }, PLOTLY_CFG);
+  };
+  sel.addEventListener("change", draw);
+  sel.value = 0; draw();
+}
+
+function renderDedup(d){
+  if (!d) return;
+  document.getElementById("dedup-pairs").textContent = fmt(d.summary.total_pairs);
+  document.getElementById("dedup-savings").textContent = "$" + fmt(d.summary.est_annual_savings_usd);
+
+  const tbody = document.getElementById("dedup-rows");
+  d.pairs.forEach(p => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td><span class="chip" style="background:#374151">${p.type}</span></td>
+      <td>
+        <div style="font-size:12px">${p.title1}</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:2px">↳ ${p.title2}</div>
+      </td>
+      <td style="font-variant-numeric:tabular-nums">${p.dist_m.toFixed(1)} m</td>
+      <td style="font-variant-numeric:tabular-nums">${p.hours_apart.toFixed(1)} h</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+// -----------------------------------------------------------------
+// (d) Bias + Archetype
+// -----------------------------------------------------------------
+function renderBias(b){
+  if (!b) return;
+  setSource("bias-source", b.source);
+
+  Plotly.newPlot("chart-bias-hour", [{
+    x: b.by_hour.map(h=>h[0]), y: b.by_hour.map(h=>h[1]*100),
+    type:"bar", marker:{color:"#7c3aed"},
+    hovertemplate:"%{x}:00 — %{y:.2f}%<extra></extra>",
+  }], {
+    margin:{l:50,r:20,t:30,b:40}, height:240,
+    title:{text:`By hour of day · χ² p ≈ ${b.chi2_pvalue < 1e-10 ? "<1e-10" : b.chi2_pvalue.toExponential(1)}`, font:{size:12}},
+    xaxis:{title:"Hour", dtick:3},
+    yaxis:{title:"Missing %", ticksuffix:"%"},
+  }, PLOTLY_CFG);
+
+  Plotly.newPlot("chart-bias-dow", [{
+    x: b.by_dow.map(d=>d[0]), y: b.by_dow.map(d=>d[1]*100),
+    type:"bar", marker:{color:"#0ea5e9"},
+    hovertemplate:"%{x} — %{y:.2f}%<extra></extra>",
+  }], {
+    margin:{l:50,r:20,t:30,b:40}, height:220,
+    title:{text:"By weekday", font:{size:12}},
+    yaxis:{title:"Missing %", ticksuffix:"%"},
+  }, PLOTLY_CFG);
+
+  const tbody = document.getElementById("bias-rows");
+  b.worst_categories.forEach(c => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${c.category}</td>
+      <td style="font-variant-numeric:tabular-nums;color:${c.missing_rate > 0.5 ? ACCENT : 'inherit'}">
+        ${(c.missing_rate*100).toFixed(1)}%</td>
+      <td style="font-variant-numeric:tabular-nums">${fmt(c.n)}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  if (b.archetypes) renderArchetype(b.archetypes);
+}
+
+function renderArchetype(arch){
+  Plotly.newPlot("chart-archetype", [{
+    type:"scatter", mode:"markers+text",
+    x: arch.map(a => a.volume_share * 100),
+    y: arch.map(a => a.overdue_rate * 100),
+    text: arch.map(a => a.name),
+    textposition:"top center",
+    marker:{
+      size: arch.map(a => Math.sqrt(a.volume_share) * 120 + 20),
+      color: arch.map((a,i) => ARCHETYPE_COLORS[i % ARCHETYPE_COLORS.length]),
+      opacity:0.75, line:{width:1, color:"#fff"},
+    },
+    hovertemplate:"%{text}<br>Volume: %{x:.1f}%<br>Overdue: %{y:.1f}%<extra></extra>",
+  }], {
+    margin:{l:60,r:30,t:30,b:50}, height:440,
+    xaxis:{title:"Volume share of tickets (%)", ticksuffix:"%"},
+    yaxis:{title:"Overdue rate (%)", ticksuffix:"%", range:[0,100]},
+    showlegend:false,
+  }, PLOTLY_CFG);
+}
+
+// -----------------------------------------------------------------
+// boot
+// -----------------------------------------------------------------
+(async () => {
+  const [reg, clf, router, dedup, bias] = await Promise.all([
+    loadJSON("regression.json"),
+    loadJSON("classifier.json"),
+    loadJSON("router_samples.json"),
+    loadJSON("dedup_samples.json"),
+    loadJSON("missing_bias.json"),
+  ]);
+  renderOdds(reg);
+  renderVIF(reg);
+  renderPRROC(clf);
+  renderCM(clf);
+  renderFeatImp(clf);
+  renderRouter(router);
+  renderDedup(dedup);
+  renderBias(bias);
+  renderMap();
+})();
+</script>
+</body>
+</html>

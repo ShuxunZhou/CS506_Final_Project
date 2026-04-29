@@ -2,6 +2,10 @@
 .idea
 .vscode
 data/
+# Keep built dashboard artifacts (aggregated JSON + geojson, ~150 KB total)
+# so the single-page HTML works out of the box after `git clone`.
+!Step3. April_v1.1/dashboard/data/
+!Step3. April_v1.1/dashboard/data/**
 
 # Large data files (reproducible via scripts)
 *.parquet
@@ -9,3 +13,5 @@ problemstic/data/shapefiles/
 problemstic/models/
 problemstic/Archive.zip
 .DS_Store
+
+venv/
