@@ -57,6 +57,11 @@ ARCHETYPE_NAMES = {
     3: "Chronic Backlog",
 }
 
+# CKAN datastore resource for 311 calendar year 2024. Used to retrieve the raw
+# rows with missing latitude/longitude that etl_311.py drops at ingestion.
+CKAN_2024_RESOURCE = "dff4d804-5031-443a-8409-8344efd0e5c8"
+CKAN_SQL_URL = "https://data.boston.gov/api/3/action/datastore_search_sql"
+
 
 def log(msg: str, *, level: str = "INFO") -> None:
     print(f"[{level}] {msg}", file=sys.stderr)
@@ -78,6 +83,106 @@ def load_parquet() -> pd.DataFrame | None:
         return None
     log(f"loading {PARQUET.relative_to(STEP_DIR)}")
     return pd.read_parquet(PARQUET)
+
+
+def _attach_archetype(df: pd.DataFrame) -> pd.DataFrame:
+    """Mirror the K-Means archetype derivation from export_models_data.py so the
+    dashboard's missing-bias / archetype block can render real numbers without
+    persisting labels back to the parquet. Same features + seed → same labels.
+    """
+    try:
+        from sklearn.cluster import KMeans
+        from sklearn.preprocessing import StandardScaler
+    except ImportError:
+        log("archetype: sklearn not installed — skipping attach", level="WARN")
+        return df
+
+    needed = {"type", "is_overdue", "resolution_time_days"}
+    missing = needed - set(df.columns)
+    if missing:
+        log(f"archetype: parquet missing {missing} — skipping attach", level="WARN")
+        return df
+
+    ops = df.groupby("type").agg(
+        volume=("is_overdue", "count"),
+        mean_res=("resolution_time_days", "mean"),
+        var_res=("resolution_time_days", "var"),
+        overdue_rate=("is_overdue", "mean"),
+    ).fillna(0)
+    ops = ops[ops["volume"] >= 50]
+    if len(ops) < 4:
+        log("archetype: <4 high-volume types — skipping attach", level="WARN")
+        return df
+
+    ops["log_volume"] = np.log1p(ops["volume"])
+    X = StandardScaler().fit_transform(
+        ops[["log_volume", "mean_res", "var_res", "overdue_rate"]]
+    )
+    km = KMeans(n_clusters=4, random_state=42, n_init=10).fit(X)
+    ops["cluster"] = km.labels_
+    # Sort clusters by overdue rate so 0=Fast..3=Chronic regardless of init.
+    rank = ops.groupby("cluster")["overdue_rate"].mean().sort_values()
+    cluster_to_arch = dict(zip(rank.index, [0, 1, 2, 3]))
+    ops["arch_id"] = ops["cluster"].map(cluster_to_arch)
+
+    df = df.copy()
+    df["archetype"] = df["type"].map(ops["arch_id"])
+    log(f"archetype: assigned {len(ops)} types across 4 clusters "
+        f"(unmatched/rare types -> NaN)")
+    return df
+
+
+def _fetch_missing_coord_2024_rows() -> pd.DataFrame | None:
+    """Fetch raw 311 rows for 2024 where lat/long is NULL via CKAN datastore SQL.
+    Result is cached at dashboard/data/_missing_coord_2024_cache.json so repeat
+    builds are free. Returns None on any failure (network, parse, schema) so the
+    caller can fall back to documented values.
+    """
+    cache = OUT_DIR / "_missing_coord_2024_cache.json"
+    if cache.exists():
+        try:
+            data = json.loads(cache.read_text(encoding="utf-8"))
+            df = pd.DataFrame(data["records"])
+            log(f"missing_bias: loaded {len(df):,} cached rows from "
+                f"{cache.relative_to(STEP_DIR)}")
+            return df
+        except (json.JSONDecodeError, KeyError, OSError) as exc:
+            log(f"missing_bias: cache unreadable ({exc}) — refetching",
+                level="WARN")
+
+    try:
+        import requests
+    except ImportError:
+        log("missing_bias: requests not installed — skipping CKAN fetch",
+            level="WARN")
+        return None
+
+    sql = (
+        f'SELECT "open_dt", "subject", "reason", "type" '
+        f'FROM "{CKAN_2024_RESOURCE}" '
+        f'WHERE "latitude" IS NULL OR "longitude" IS NULL'
+    )
+    try:
+        log("missing_bias: fetching raw 2024 missing-coord rows from CKAN")
+        resp = requests.get(CKAN_SQL_URL, params={"sql": sql}, timeout=60)
+        resp.raise_for_status()
+        body = resp.json()
+        if not body.get("success"):
+            log(f"missing_bias: CKAN returned error ({body.get('error')})",
+                level="WARN")
+            return None
+        records = body["result"]["records"]
+    except Exception as exc:
+        log(f"missing_bias: CKAN fetch failed ({exc})", level="WARN")
+        return None
+
+    cache.parent.mkdir(parents=True, exist_ok=True)
+    cache.write_text(
+        json.dumps({"records": records}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    log(f"missing_bias: fetched + cached {len(records):,} raw missing-coord rows")
+    return pd.DataFrame(records)
 
 
 # ---------------------------------------------------------------------------
@@ -535,19 +640,71 @@ def export_missing_bias(df: pd.DataFrame | None) -> None:
             missing_mask = df_2024[lat_col].isna() | df_2024[lon_col].isna()
             n_missing = int(missing_mask.sum())
             if n_missing == 0:
-                # etl_311.py drops missing-coord rows + applies a Boston bbox
-                # filter, so the parquet by construction has no missing coords
-                # left to bin. Recomputing here would just emit zeros and
-                # blank out the (documented) by-hour / by-dow plots. Keep the
-                # fallback distribution and tag the source so the dashboard
-                # source-pill makes the limitation visible.
-                log(
-                    "missing_bias: parquet has 0 missing coords (filtered by ETL) — "
-                    "keeping documented fallback for hour/dow/categories",
-                    level="WARN",
-                )
-                payload["source"] = "fallback (etl-filtered parquet)"
-                payload["total_records_2024"] = int(len(df_2024))
+                # etl_311.py drops missing-coord rows at ingestion, so the
+                # parquet has nothing left to bin. Pull the raw missing rows
+                # straight from CKAN (cached) and recompute the rate as
+                # missing_per_bucket / (parquet_per_bucket + missing_per_bucket).
+                raw_missing = _fetch_missing_coord_2024_rows()
+                if raw_missing is None or raw_missing.empty:
+                    log("missing_bias: CKAN unavailable — keeping documented "
+                        "fallback for hour/dow/categories", level="WARN")
+                    payload["source"] = "fallback (etl-filtered parquet)"
+                    payload["total_records_2024"] = int(len(df_2024))
+                else:
+                    raw_missing = raw_missing.copy()
+                    raw_missing["open_dt"] = pd.to_datetime(
+                        raw_missing["open_dt"], errors="coerce"
+                    )
+                    raw_missing = raw_missing.dropna(subset=["open_dt"])
+                    n_missing_real = len(raw_missing)
+                    n_total = len(df_2024) + n_missing_real
+
+                    payload["source"] = "computed (ckan + parquet)"
+                    payload["total_records_2024"] = int(n_total)
+                    payload["missing_count"] = int(n_missing_real)
+                    payload["missing_rate"] = float(n_missing_real / n_total)
+
+                    parquet_h = df_2024["open_dt"].dt.hour.value_counts()
+                    missing_h = raw_missing["open_dt"].dt.hour.value_counts()
+                    all_h = parquet_h.add(missing_h, fill_value=0).reindex(
+                        range(24), fill_value=0
+                    )
+                    miss_h = missing_h.reindex(range(24), fill_value=0)
+                    rate_h = (miss_h / all_h.replace(0, np.nan)).fillna(0)
+                    payload["by_hour"] = [
+                        [h, float(rate_h.iloc[h])] for h in range(24)
+                    ]
+
+                    dow_labels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+                    parquet_d = df_2024["open_dt"].dt.dayofweek.value_counts()
+                    missing_d = raw_missing["open_dt"].dt.dayofweek.value_counts()
+                    all_d = parquet_d.add(missing_d, fill_value=0).reindex(
+                        range(7), fill_value=0
+                    )
+                    miss_d = missing_d.reindex(range(7), fill_value=0)
+                    rate_d = (miss_d / all_d.replace(0, np.nan)).fillna(0)
+                    payload["by_dow"] = [
+                        [dow_labels[i], float(rate_d.iloc[i])] for i in range(7)
+                    ]
+
+                    if "type" in df_2024.columns and "type" in raw_missing.columns:
+                        parquet_cat = df_2024["type"].value_counts()
+                        missing_cat = raw_missing["type"].value_counts()
+                        all_cat = parquet_cat.add(missing_cat, fill_value=0)
+                        rate_cat = (missing_cat / all_cat).dropna()
+                        # Require >=5 missing to keep the rate stable for display.
+                        qualified = rate_cat[
+                            missing_cat.reindex(rate_cat.index, fill_value=0) >= 5
+                        ]
+                        top = qualified.sort_values(ascending=False).head(5)
+                        payload["worst_categories"] = [
+                            {
+                                "category": str(cat),
+                                "missing_rate": float(rate),
+                                "n": int(missing_cat.get(cat, 0)),
+                            }
+                            for cat, rate in top.items()
+                        ]
             else:
                 payload["total_records_2024"] = int(len(df_2024))
                 payload["missing_count"] = n_missing
@@ -565,15 +722,19 @@ def export_missing_bias(df: pd.DataFrame | None) -> None:
                 payload["by_dow"] = [[dow_labels[i], float(v)] for i, v in enumerate(by_dow)]
 
     if "archetype" in df.columns and "is_overdue" in df.columns:
-        arch_grp = df.groupby("archetype").agg(
+        arch = df.dropna(subset=["archetype"]).copy()
+        arch["archetype"] = arch["archetype"].astype(int)
+        arch_grp = arch.groupby("archetype").agg(
             volume=("archetype", "size"),
             overdue_rate=("is_overdue", "mean"),
+            n_types=("type", "nunique"),
         )
         total = arch_grp["volume"].sum()
         payload["archetypes"] = [
             {
                 "id": int(aid),
                 "name": ARCHETYPE_NAMES.get(int(aid), str(aid)),
+                "n_types": int(row["n_types"]),
                 "volume_share": float(row["volume"] / total),
                 "overdue_rate": float(row["overdue_rate"]),
             }
@@ -591,6 +752,8 @@ def main() -> int:
     log(f"output → {OUT_DIR.relative_to(STEP_DIR)}")
 
     df = load_parquet()
+    if df is not None:
+        df = _attach_archetype(df)
 
     export_regression(df)
     export_classifier()
