@@ -69,16 +69,16 @@ PRD: Intelligent Dispatch System
 
 ### Optimization Pass — April 8 Tutor Feedback (ALL 5 resolved)
 
-- [x] **Right-censoring 硬截断** — `equity_regression.ipynb` + `overdue_classifier.ipynb`
+- [x] **Right-censoring ** — `equity_regression.ipynb` + `overdue_classifier.ipynb`
   - `REFERENCE_DATE=2026-04-08`, cutoff = REFERENCE_DATE − 30d = `2026-03-09`
   - Filter `df[df["open_dt"] < cutoff]` applied before label construction
   - Note: current `boston_311_with_svi.parquet` snapshot predates the cutoff, so 0 rows drop in this run — logic is in place and will engage once ETL is re-run with fresher data
-- [x] **VIF 多重共线性诊断** — `equity_regression.ipynb` (cell `dfafc595`)
+- [x] **VIF ** — `equity_regression.ipynb` (cell `dfafc595`)
   - Candidates: EP_POV150, EP_UNEMP, EP_NOHSDP, EP_LIMENG, EP_MINRTY, EP_NOVEH
   - Iterative drop if VIF>5 → **all 6 features retained** (max VIF ≤ 5)
   - Max pairwise correlation: EP_NOHSDP ↔ EP_LIMENG = 0.82 (tolerable)
   - Conclusion: the original "only EP_MINRTY significant" finding is robust to collinearity concerns
-- [x] **Dedup 48h 时间窗口 + TF-IDF 语义局限说明** — `prd_dedup_routing.ipynb`
+- [x] **Dedup 48h  + TF-IDF ** — `prd_dedup_routing.ipynb`
   - `find_duplicates(..., time_window_hours=48)`, grouping by `type` only (not type+date) so cross-midnight pairs are caught
   - Q1 2024: **27,309 duplicate pairs** (up from 13,719 w/o time window) → **$16.4M** est. annual savings
   - Added markdown section on TF-IDF blind spots (synonyms, paraphrases, negation) recommending sentence-BERT upgrade
@@ -87,7 +87,7 @@ PRD: Intelligent Dispatch System
   - **RF PR-AUC = 0.4197** (2.3× baseline ≈ 0.183); DT PR-AUC = 0.4114; LR = 0.36
   - PR curve plot now shows baseline prevalence line for honest framing
   - Added business interpretation markdown on cost of FP vs FN at Recall=75%
-- [x] **缺经纬度票系统性偏差** — `missing_coord_bias.ipynb` (new notebook)
+- [x] **** — `missing_coord_bias.ipynb` (new notebook)
   - Re-fetched 2024 resource directly from CKAN; bbox 42.2–42.45 × −71.2 to −70.9
   - **2,158 / 282,836 = 0.76% drop rate** (all NaN, no (0,0) or out-of-bbox sentinels)
   - χ² tests: significantly non-independent for `reason`, `type`, `department` (p≪0.001)
@@ -141,19 +141,19 @@ Source: `demo_April_8.pdf` (tutor feedback on current pipeline)
 
 | # | Issue | Severity | Our Status | Fix |
 |---|-------|----------|------------|-----|
-| 1 | **Right-Censoring Fallacy** — open tickets <30 days labeled not-overdue, but outcome unknown | 致命 | **已解决** — cutoff=`REFERENCE_DATE − 30d` 过滤逻辑已接入 | 硬截断：只取 `open_dt` > 30天前的样本，确保标签确定性 |
-| 2 | **VIF 多重共线性** — SVI 特征间高相关，p值不可信 | 致命 | **已解决** — 迭代 VIF 诊断，all 6 features retained (max VIF≤5) | 计算 VIF，VIF>5 的做 PCA 或剔除，重跑回归 |
-| 3 | **去重缺时间窗口 + TF-IDF 语义盲区** | 致命 | **已解决** — 48h 硬窗口，27,309 pairs；TF-IDF 语义局限已写入报告 | 加 `abs(time_diff) < 48h` 硬规则；报告承认 TF-IDF 语义局限 |
-| 4 | **虚荣指标** — 只看 Recall 不看 Precision/PR-AUC | 重要 | **已解决** — PR-AUC=0.4197 (RF), 2.3× baseline；tradeoff 已讨论 | 补充 PR-AUC，讨论 precision-recall tradeoff 业务含义 |
-| 5 | **Spatial Join CRS 不对齐 + 缺经纬度偏差** | 致命 | **已解决** — 缺坐标率 0.76%，χ² 显示 reason/type 非独立（`missing_coord_bias.ipynb`） | 检查缺经纬度票的数量/分布，报告说明是否存在系统性偏差 |
+| 1 | **Right-Censoring Fallacy** — open tickets <30 days labeled not-overdue, but outcome unknown |  | **** — cutoff=`REFERENCE_DATE − 30d`  | ： `open_dt` > 30， |
+| 2 | **VIF ** — SVI ，p |  | **** —  VIF ，all 6 features retained (max VIF≤5) |  VIF，VIF>5  PCA ， |
+| 3 | ** + TF-IDF ** |  | **** — 48h ，27,309 pairs；TF-IDF  |  `abs(time_diff) < 48h` ； TF-IDF  |
+| 4 | **** —  Recall  Precision/PR-AUC |  | **** — PR-AUC=0.4197 (RF), 2.3× baseline；tradeoff  |  PR-AUC， precision-recall tradeoff  |
+| 5 | **Spatial Join CRS  + ** |  | **** —  0.76%，χ²  reason/type （`missing_coord_bias.ipynb`） | /， |
 
 ### Optimization Priority (all complete)
 
-1. ✅ **[P0]** 硬截断 right-censoring → logic wired into regression + classifier (0 drops on current snapshot, cutoff 2026-03-09)
-2. ✅ **[P0]** VIF 诊断 → all 6 SVI features retained (max VIF ≤ 5) → "EP_MINRTY 显著" 结论 robust
-3. ✅ **[P1]** 去重加 48h 时间窗口 → 27,309 pairs Q1 2024 (up from 13,719) → $16.4M 年节约
-4. ✅ **[P1]** PR-AUC = 0.4197 (RF, 2.3× baseline) + precision-recall tradeoff 已讨论
-5. ✅ **[P2]** 缺经纬度偏差：2,158/282,836 = 0.76%，χ² 显示 reason/type 系统性相关
+1. ✅ **[P0]**  right-censoring → logic wired into regression + classifier (0 drops on current snapshot, cutoff 2026-03-09)
+2. ✅ **[P0]** VIF  → all 6 SVI features retained (max VIF ≤ 5) → "EP_MINRTY "  robust
+3. ✅ **[P1]**  48h  → 27,309 pairs Q1 2024 (up from 13,719) → $16.4M 
+4. ✅ **[P1]** PR-AUC = 0.4197 (RF, 2.3× baseline) + precision-recall tradeoff 
+5. ✅ **[P2]** ：2,158/282,836 = 0.76%，χ²  reason/type 
 
 ---
 
@@ -161,11 +161,11 @@ Source: `demo_April_8.pdf` (tutor feedback on current pipeline)
 
 ### Optimization Pass (April 8 Tutor Feedback) — COMPLETE
 
-- [x] Right-censoring 硬截断：cutoff=2026-03-09, logic wired in regression + classifier
-- [x] VIF 诊断: all 6 SVI features retained, max VIF ≤ 5
-- [x] 去重加 48h 时间窗口: 27,309 pairs; TF-IDF 语义局限已在 notebook markdown 说明
-- [x] PR-AUC = 0.4197 (RF), precision-recall tradeoff 已讨论
-- [x] 缺经纬度偏差: 0.76% drop rate, χ² 显示 reason/type 非独立 (`missing_coord_bias.ipynb`)
+- [x] Right-censoring ：cutoff=2026-03-09, logic wired in regression + classifier
+- [x] VIF : all 6 SVI features retained, max VIF ≤ 5
+- [x]  48h : 27,309 pairs; TF-IDF  notebook markdown 
+- [x] PR-AUC = 0.4197 (RF), precision-recall tradeoff 
+- [x] : 0.76% drop rate, χ²  reason/type  (`missing_coord_bias.ipynb`)
 
 ### Week 3 — Analysis Report & Visualizations
 
