@@ -5,6 +5,7 @@
 [![Course](https://img.shields.io/badge/Course-CS506-red)](https://www.bu.edu/cs)
 
 **CS506 Final Project** — An equity-focused audit of Boston's 311 service request system, combining multivariate logistic regression with machine learning classifiers to quantify socioeconomic disparities in municipal service delivery.
+**Display Video** - (https://youtu.be/OqvFAl3WLiQ)
 
 ---
 
